@@ -69,7 +69,7 @@ shared_ptr<WMBus> openMBUS(string device, int baudrate, shared_ptr<SerialCommuni
 }
 
 MBusRawTTY::MBusRawTTY(shared_ptr<SerialDevice> serial, shared_ptr<SerialCommunicationManager> manager) :
-    WMBusCommonImplementation(DEVICE_RAWTTY, manager, serial, true)
+    WMBusCommonImplementation(DEVICE_MBUS, manager, serial, true)
 {
     reset();
 }
@@ -115,7 +115,7 @@ void MBusRawTTY::processSerialData()
 
     for (;;)
     {
-        FrameStatus status = checkWMBusFrame(read_buffer_, &frame_length, &payload_len, &payload_offset);
+        FrameStatus status = checkMBusFrame(read_buffer_, &frame_length, &payload_len, &payload_offset);
 
         if (status == PartialFrame)
         {
@@ -159,7 +159,7 @@ AccessCheck detectMBUS(Detected *detected, shared_ptr<SerialCommunicationManager
 
     serial->close();
 
-    detected->setAsFound("", WMBusDeviceType::DEVICE_RAWTTY, bps, false, false,
+    detected->setAsFound("", WMBusDeviceType::DEVICE_MBUS, bps, false, false,
         detected->specified_device.linkmodes);
 
     return AccessCheck::AccessOK;

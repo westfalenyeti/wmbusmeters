@@ -54,6 +54,8 @@ void parseMeterConfig(Configuration *c, vector<char> &buf, string file)
     string id;
     string key;
     string linkmodes;
+    string mbus;
+    string poll;
     vector<string> telegram_shells;
     vector<string> alarm_shells;
     vector<string> jsons;
@@ -81,6 +83,10 @@ void parseMeterConfig(Configuration *c, vector<char> &buf, string file)
         if (p.first == "type") type = p.second;
         else
         if (p.first == "id") id = p.second;
+        else
+        if (p.first == "mbus") mbus = p.second;
+        else
+        if (p.first == "poll") poll = p.second;
         else
         if (p.first == "key")
         {
@@ -155,7 +161,7 @@ void parseMeterConfig(Configuration *c, vector<char> &buf, string file)
         use = false;
     }
     if (use) {
-        c->meters.push_back(MeterInfo(name, type, id, key, modes, telegram_shells, jsons));
+        c->meters.push_back(MeterInfo(name, type, id, key, modes, mbus, poll, telegram_shells, jsons));
     }
 
     return;

@@ -1276,6 +1276,12 @@ bool Telegram::parseLongTPL(std::vector<uchar>::iterator &pos)
     tpl_id_b[2] = *(pos+2);
     tpl_id_b[3] = *(pos+3);
 
+    tpl_a.resize(6);
+    for (int i=0; i<4; ++i)
+    {
+        tpl_a[i] = *(pos+i);
+    }
+
     // Add the tpl_id to ids.
     string id = tostrprintf("%02x%02x%02x%02x", *(pos+3), *(pos+2), *(pos+1), *(pos+0));
     ids.push_back(id);
@@ -1292,10 +1298,12 @@ bool Telegram::parseLongTPL(std::vector<uchar>::iterator &pos)
 
     CHECK(1);
     tpl_version = *(pos+0);
+    tpl_a[4] = *(pos+0);
     addExplanationAndIncrementPos(pos, 1, "%02x tpl-version", tpl_version);
 
     CHECK(1);
     tpl_type = *(pos+0);
+    tpl_a[5] = *(pos+0);
     string info = mediaType(tpl_type, tpl_mfct);
     addExplanationAndIncrementPos(pos, 1, "%02x tpl-type (%s)", tpl_type, info.c_str());
 
@@ -4071,6 +4079,68 @@ FrameStatus checkWMBusFrame(vector<uchar> &data,
     return FullFrame;
 }
 
+FrameStatus checkMBusFrame(vector<uchar> &data,
+                           size_t *frame_length,
+                           int *payload_len_out,
+                           int *payload_offset)
+{
+    // Example:
+    // 68383868080072840200102941011B010000000265AE084265C208B20165000002FB1A450142FB1A4C01B201FB1A00000C788402001002FD0F21000F5E16
+
+    debugPayload("(wmbus) checkMBUSFrame\n", data);
+
+    if (data.size() == 0)
+    {
+        return PartialFrame;
+    }
+    int type = data[0];
+    int payload_len = data[1];
+    int offset = 1;
+
+    if (type != 0x68)
+    {
+        // Ouch, we are out of sync with the mbus frames that we expect!
+        // Since we currently do not handle any other type of frame, we can
+        // look for the byte 0x44 in the buffer. If we find a 0x44 byte and
+        // the length byte before it maps to the end of the buffer,
+        // then we have found a valid telegram.
+        bool found = false;
+        for (size_t i = 0; i < data.size()-2; ++i)
+        {
+            if (data[i+1] == 0x44)
+            {
+                payload_len = data[i];
+                size_t remaining = data.size()-i;
+                if (data[i]+1 == (uchar)remaining && data[i+1] == 0x44)
+                {
+                    found = true;
+                    offset = i+1;
+                    verbose("(wmbus) out of sync, skipping %d bytes.\n", (int)i);
+                    break;
+                }
+            }
+        }
+        if (!found)
+        {
+            // No sensible telegram in the buffer. Flush it!
+            verbose("(wmbus) no sensible telegram found, clearing buffer.\n");
+            data.clear();
+            return ErrorInFrame;
+        }
+    }
+    *payload_len_out = payload_len;
+    *payload_offset = offset;
+    *frame_length = payload_len+offset;
+    if (data.size() < *frame_length)
+    {
+        debug("(wmbus) not enough bytes, partial frame %d %d\n", data.size(), *frame_length);
+        return PartialFrame;
+    }
+
+    debug("(wmbus) received full frame.\n");
+    return FullFrame;
+}
+
 string decodeTPLStatusByte(uchar sts, map<int,string> vendor_lookup)
 {
     string s;
@@ -4456,15 +4526,15 @@ Detected detectWMBusDeviceWithFile(SpecifiedDevice &specified_device,
         return detected;
     }
 
-    // Special case to cater for /dev/ttyUSB0:mbus:9600, ie an mbus master device.
+    // Special case to cater for /dev/ttyUSB0:mbus:2400, ie an mbus master device.
     if (specified_device.type == WMBusDeviceType::DEVICE_MBUS)
     {
         debug("(lookup) driver: mbus\n");
         int bps = atoi(specified_device.bps.c_str());
         if (bps < 300)
         {
-            // Default to 9600. This will be adjusted every time the meters are probed.
-            bps = 9600;
+            // Default to 2400. This will be adjusted every time the meters are probed.
+            bps = 2400;
         }
         detected.setAsFound("", DEVICE_MBUS, bps, false, false, lms);
         return detected;

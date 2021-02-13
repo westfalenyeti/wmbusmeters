@@ -195,20 +195,21 @@ typedef unsigned char uchar;
 
 struct MeterInfo
 {
-    string name;
-    string type;
-    string id;
-    string key;
-    LinkModeSet link_modes;
+    string name; // User specified name for this meter, eg GardenWater, Heating
+    string type; // Driver used to decode and talk to this meter.
+    string id;   // Id number, can be 12345678 for wmbus or 1-254 for mbus.
+    string key;  // A decryption key.
+    LinkModeSet link_modes; // For wmbus meters.
+    string mbus; // The mbus device and bps used to find the meter, eg /dev/ttyUSB0:9600
+    string poll; // How often the meter should be polled.
     vector<string> shells;
     vector<string> jsons; // Additional static jsons that are added to each message.
-
 
     MeterInfo()
     {
     }
 
-    MeterInfo(string n, string t, string i, string k, LinkModeSet lms, vector<string> &s, vector<string> &j)
+    MeterInfo(string n, string t, string i, string k, LinkModeSet lms, string mb, string po, vector<string> &s, vector<string> &j)
     {
         name = n;
         type = t;
@@ -217,6 +218,8 @@ struct MeterInfo
         shells = s;
         jsons = j;
         link_modes = lms;
+        mbus = mb;
+        poll = po;
     }
 };
 

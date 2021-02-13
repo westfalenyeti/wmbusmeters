@@ -265,6 +265,8 @@ int test_linkmodes()
     string apator162 = "apator162";
     apator_config.meters.push_back(MeterInfo("m1", apator162, "12345678", "",
                                              toMeterLinkModeSet(apator162),
+                                             "",
+                                             "",
                                              no_meter_shells,
                                              no_meter_jsons));
 
@@ -302,10 +304,14 @@ int test_linkmodes()
     string supercom587 = "supercom587";
     multical21_and_supercom587_config.meters.push_back(MeterInfo("m1", multical21, "12345678", "",
                                                                  toMeterLinkModeSet(multical21),
+                                                                 "",
+                                                                 "",
                                                                  no_meter_shells,
                                                                  no_meter_jsons));
     multical21_and_supercom587_config.meters.push_back(MeterInfo("m2", supercom587, "12345678", "",
                                                                  toMeterLinkModeSet(supercom587),
+                                                                 "",
+                                                                 "",
                                                                  no_meter_shells,
                                                                  no_meter_jsons));
 
