@@ -326,6 +326,12 @@ struct MeterKeys
     bool hasAuthenticationKey() { return authentication_key.size() > 0; }
 };
 
+enum class FrameType
+{
+    WMBUS,
+    MBUS
+};
+
 struct AboutTelegram
 {
     // wmbus device used to receive this telegram.
@@ -334,8 +340,10 @@ struct AboutTelegram
     // -100 dbm = 0.1 pico Watt to -20 dbm = 10 micro W
     // Measurements smaller than -100 and larger than -10 are unlikely.
     int rssi_dbm {};
+    // WMBus or MBus
+    FrameType type {};
 
-    AboutTelegram(string dv, int rs) : device(dv), rssi_dbm(rs) {}
+    AboutTelegram(string dv, int rs, FrameType t) : device(dv), rssi_dbm(rs), type(t) {}
     AboutTelegram() {}
 };
 
@@ -450,6 +458,10 @@ struct Telegram
 
     bool parseHeader(vector<uchar> &input_frame);
     bool parse(vector<uchar> &input_frame, MeterKeys *mk, bool warn);
+
+    bool parseMBusHeader(vector<uchar> &input_frame);
+    bool parseMBus(vector<uchar> &input_frame, MeterKeys *mk, bool warn);
+
     void print();
 
     // A vector of indentations and explanations, to be printed
@@ -478,6 +490,8 @@ private:
 
     // Fixes quirks from non-compliant meters to make telegram compatible with the standard
     void preProcess();
+
+    bool parseMBusDLL(std::vector<uchar>::iterator &pos);
 
     bool parseDLL(std::vector<uchar>::iterator &pos);
     bool parseELL(std::vector<uchar>::iterator &pos);

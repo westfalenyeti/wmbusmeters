@@ -787,6 +787,36 @@ bool expectedMore(int line)
     return false;
 }
 
+bool Telegram::parseMBusDLL(vector<uchar>::iterator &pos)
+{
+    int remaining = distance(pos, frame.end());
+    if (remaining == 0) return expectedMore(__LINE__);
+
+    debug("(wmbus) parseDLL @%d %d\n", distance(frame.begin(), pos), remaining);
+    dll_len = *pos;
+    if (remaining < dll_len) return expectedMore(__LINE__);
+    addExplanationAndIncrementPos(pos, 1, "%02x length (%d bytes)", dll_len, dll_len);
+
+    dll_c = *pos;
+    addExplanationAndIncrementPos(pos, 1, "%02x dll-c (%s)", dll_c, cType(dll_c).c_str());
+
+    dll_a.resize(6);
+    for (int i=0; i<6; ++i) dll_a[i] = 0;
+    dll_id.resize(4);
+    for (int i=0; i<4; ++i) dll_id[i] = 0;
+    dll_a[0] = *pos;
+    dll_id[0] = *pos;
+
+    addExplanationAndIncrementPos(pos, 1, "%02x dll-a (%d)", dll_a[0], dll_a[0]);
+
+    // Add dll_id to ids.
+    string id = tostrprintf("%02x", dll_a[0]);
+    ids.push_back(id);
+    idsc = id;
+
+    return true;
+}
+
 bool Telegram::parseDLL(vector<uchar>::iterator &pos)
 {
     int remaining = distance(pos, frame.end());
@@ -1610,6 +1640,7 @@ void Telegram::preProcess()
 
 bool Telegram::parseHeader(vector<uchar> &input_frame)
 {
+    assert(about.type == FrameType::WMBUS);
     bool ok;
     // Parsing the header is used to extract the ids, so that we can
     // match the telegram towards any known ids and thus keys.
@@ -1647,6 +1678,7 @@ bool Telegram::parseHeader(vector<uchar> &input_frame)
 
 bool Telegram::parse(vector<uchar> &input_frame, MeterKeys *mk, bool warn)
 {
+    assert(about.type == FrameType::WMBUS);
     parser_warns_ = warn;
     decryption_failed = false;
     explanations.clear();
@@ -1715,6 +1747,56 @@ bool Telegram::parse(vector<uchar> &input_frame, MeterKeys *mk, bool warn)
 
     printTPL();
     if (decryption_failed) return false;
+
+    return true;
+}
+
+bool Telegram::parseMBusHeader(vector<uchar> &input_frame)
+{
+    bool ok;
+    assert(about.type == FrameType::MBUS);
+    // Parsing the header is used to extract the ids, so that we can
+    // match the telegram towards any known ids and thus keys.
+    // No need to warn.
+    parser_warns_ = false;
+    decryption_failed = false;
+    explanations.clear();
+    frame = input_frame;
+    vector<uchar>::iterator pos = frame.begin();
+    // Parsed accumulates parsed bytes.
+    parsed.clear();
+
+    ok = parseMBusDLL(pos);
+    if (!ok) return false;
+
+    return true;
+}
+
+bool Telegram::parseMBus(vector<uchar> &input_frame, MeterKeys *mk, bool warn)
+{
+    assert(about.type == FrameType::MBUS);
+    parser_warns_ = warn;
+    decryption_failed = false;
+    explanations.clear();
+    meter_keys = mk;
+    assert(meter_keys != NULL);
+    bool ok;
+    frame = input_frame;
+    vector<uchar>::iterator pos = frame.begin();
+    // Parsed accumulates parsed bytes.
+    parsed.clear();
+    // Fixes quirks from non-compliant meters to make telegram compatible with the standard
+    preProcess();
+    //     ┌──────────────────────────────────────────────┐
+    //     │                                              │
+    //     │ Parse DLL Data Link Layer for Wireless MBUS. │
+    //     │                                              │
+    //     └──────────────────────────────────────────────┘
+
+    ok = parseMBusDLL(pos);
+    if (!ok) return false;
+
+    printDLL();
 
     return true;
 }
@@ -4085,58 +4167,69 @@ FrameStatus checkMBusFrame(vector<uchar> &data,
                            int *payload_offset)
 {
     // Example:
-    // 68383868080072840200102941011B010000000265AE084265C208B20165000002FB1A450142FB1A4C01B201FB1A00000C788402001002FD0F21000F5E16
+    // E5
+    // 68383868 start length 0x38 = 56
+    // 56 bytes of payload data:
+    // 080072840200102941011B010000000265AE084265C208B20165000002FB1A450142FB1A4C01B201FB1A00000C788402001002FD0F21000F
+    // 5E checksum
+    // 16 stop
 
     debugPayload("(wmbus) checkMBUSFrame\n", data);
 
-    if (data.size() == 0)
+    if (data.size() > 0 && data[0] == 0xe5)
     {
+        // Single character confirmation frame.
+        *payload_len_out = 0;
+        *payload_offset = 0;
+        *frame_length = 1;
+        debug("(wmbus) received E5 single byte frame.\n");
+        return FullFrame;
+    }
+    if (data.size() < 6)
+    {
+        // 4 byte start, 1 checksum, 1 stop
+        debug("(wmbus) less than 6 bytes, partial frame\n");
         return PartialFrame;
     }
-    int type = data[0];
-    int payload_len = data[1];
-    int offset = 1;
-
-    if (type != 0x68)
+    if (data[0] != 0x68 && data[3] != 0x68)
     {
-        // Ouch, we are out of sync with the mbus frames that we expect!
-        // Since we currently do not handle any other type of frame, we can
-        // look for the byte 0x44 in the buffer. If we find a 0x44 byte and
-        // the length byte before it maps to the end of the buffer,
-        // then we have found a valid telegram.
-        bool found = false;
-        for (size_t i = 0; i < data.size()-2; ++i)
-        {
-            if (data[i+1] == 0x44)
-            {
-                payload_len = data[i];
-                size_t remaining = data.size()-i;
-                if (data[i]+1 == (uchar)remaining && data[i+1] == 0x44)
-                {
-                    found = true;
-                    offset = i+1;
-                    verbose("(wmbus) out of sync, skipping %d bytes.\n", (int)i);
-                    break;
-                }
-            }
-        }
-        if (!found)
-        {
-            // No sensible telegram in the buffer. Flush it!
-            verbose("(wmbus) no sensible telegram found, clearing buffer.\n");
-            data.clear();
-            return ErrorInFrame;
-        }
+        verbose("(wmbus) no 0x68 byte found, clearing buffer.\n");
+        data.clear();
+        return ErrorInFrame;
     }
-    *payload_len_out = payload_len;
-    *payload_offset = offset;
-    *frame_length = payload_len+offset;
+
+    if (data[1] != data[2])
+    {
+        verbose("(wmbus) lengths not matching, clearing buffer.\n");
+        data.clear();
+        return ErrorInFrame;
+    }
+    int payload_len = data[1];
+    *frame_length = payload_len+4+1+1; // start(4)+cs(1)+stop(1)
     if (data.size() < *frame_length)
     {
         debug("(wmbus) not enough bytes, partial frame %d %d\n", data.size(), *frame_length);
         return PartialFrame;
     }
+    uchar stop = data[*frame_length-1];
+    if (stop != 0x16)
+    {
+        verbose("(wmbus) stop byte (0x%02x) at pos %d is not 0x16, clearing buffer.\n", stop, *frame_length-1);
+        data.clear();
+        return ErrorInFrame;
+    }
+    uchar csc = 0;
+    for (size_t i=4; i<(*frame_length-2); ++i) csc += data[i];
+    uchar cs = data[*frame_length-2];
+    if (cs != csc)
+    {
+        verbose("(wmbus) expected checksum 0x%02x but got 0x%02x, clearing buffer.\n", csc, cs);
+        data.clear();
+        return ErrorInFrame;
+    }
 
+    *payload_len_out = *frame_length-6;
+    *payload_offset = 4;
     debug("(wmbus) received full frame.\n");
     return FullFrame;
 }

@@ -124,9 +124,9 @@ void MBusRawTTY::processSerialData()
         }
         if (status == ErrorInFrame)
         {
-            verbose("(rawtty) protocol error in message received!\n");
+            verbose("(mbus) protocol error in message received!\n");
             string msg = bin2hex(read_buffer_);
-            debug("(rawtty) protocol error \"%s\"\n", msg.c_str());
+            debug("(mbus) protocol error \"%s\"\n", msg.c_str());
             read_buffer_.clear();
             break;
         }
@@ -140,7 +140,7 @@ void MBusRawTTY::processSerialData()
                 payload.insert(payload.end(), read_buffer_.begin()+payload_offset, read_buffer_.begin()+payload_offset+payload_len);
             }
             read_buffer_.erase(read_buffer_.begin(), read_buffer_.begin()+frame_length);
-            AboutTelegram about("", 0);
+            AboutTelegram about("", 0, FrameType::MBUS);
             handleTelegram(about, payload);
         }
     }

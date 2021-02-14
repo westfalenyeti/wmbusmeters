@@ -489,7 +489,17 @@ bool MeterCommonImplementation::handleTelegram(AboutTelegram &about, vector<ucha
 {
     Telegram t;
     t.about = about;
-    bool ok = t.parseHeader(input_frame);
+    bool ok = false;
+
+    if (about.type == FrameType::WMBUS)
+    {
+        ok = t.parseHeader(input_frame);
+    }
+    else
+    {
+        if (input_frame.size() == 1 && input_frame[0] == 0xe5) return true;
+        ok = t.parseMBusHeader(input_frame);
+    }
 
     if (simulated) t.markAsSimulated();
 

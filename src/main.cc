@@ -1242,10 +1242,20 @@ bool start(Configuration *config)
                 Telegram t;
                 t.about = about;
                 MeterKeys mk;
-                t.parse(frame, &mk, false); // Try a best effort parse, do not print any warnings.
-                t.print();
-                t.explainParse("(wmbus)",0);
-                logTelegram(t.original, t.frame, 0, 0);
+                if (t.about.type == FrameType::WMBUS)
+                {
+                    t.parse(frame, &mk, false); // Try a best effort parse, do not print any warnings.
+                    t.print();
+                    t.explainParse("(wmbus)",0);
+                    logTelegram(t.original, t.frame, 0, 0);
+                }
+                else
+                {
+                    t.parseMBusHeader(frame); // Try a best effort parse, do not print any warnings.
+                    t.print();
+                    t.explainParse("(mbus)",0);
+                    logTelegram(t.original, t.frame, 0, 0);
+                }
                 return true;
             });
 
